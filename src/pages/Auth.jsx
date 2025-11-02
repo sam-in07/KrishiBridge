@@ -1,4 +1,5 @@
-import { useState } from "react";
+// src/pages/Auth.jsx
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,30 +8,96 @@ import { Leaf, UserCircle, ShoppingBasket, Shield } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
+import { auth, googleProvider } from "../Firebase/firebase.config";
+import {
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+} from "firebase/auth";
+
 const Auth = () => {
   const [selectedRole, setSelectedRole] = useState("farmer");
   const [isLogin, setIsLogin] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const handleAuth = (e) => {
-    e.preventDefault();
+  const validateEmail = (email) => /\S+@\S+\.\S+/.test(email);
 
-  const name = !isLogin ? e.target.name.value : "User";
-  const email = e.target.email.value;
-
-  localStorage.setItem("userName", name);
-  localStorage.setItem("userEmail", email);
-  localStorage.setItem("userRole", selectedRole);
-
-    toast({
-      title: isLogin ? "Login Successful!" : "Account Created!",
-      description: `Welcome to KrishiBridge ${selectedRole} portal`,
+  // Track auth state changes
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) setCurrentUser(user);
+      else setCurrentUser(null);
     });
+    return () => unsubscribe();
+  }, []);
 
-    if (selectedRole === "farmer") navigate("/farmer");
-    else if (selectedRole === "buyer") navigate("/buyer");
-    else navigate("/admin");
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    const name = !isLogin ? e.target.name.value.trim() : "";
+    const email = e.target.email.value.trim();
+    const password = e.target.password.value;
+
+    if (!validateEmail(email)) {
+      return toast({ title: "Invalid Email", description: "Please enter a valid email address" });
+    }
+    if (password.length < 6) {
+      return toast({ title: "Weak Password", description: "Password must be at least 6 characters" });
+    }
+
+    try {
+      let userCredential;
+
+      if (isLogin) {
+        // Login
+        userCredential = await signInWithEmailAndPassword(auth, email, password);
+        toast({ title: "Login Successful!", description: `Welcome back, ${userCredential.user.displayName || "User"}` });
+      } else {
+        // Sign up
+        userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        // Update display name
+        await updateProfile(userCredential.user, { displayName: name });
+        toast({ title: "Account Created!", description: `Welcome to KrishiBridge ${selectedRole} portal` });
+      }
+
+      // Store info locally
+      localStorage.setItem("userName", userCredential.user.displayName || name || "User");
+      localStorage.setItem("userEmail", userCredential.user.email);
+      localStorage.setItem("userRole", selectedRole);
+
+      // Navigate based on role
+      if (selectedRole === "farmer") navigate("/farmer");
+      else if (selectedRole === "buyer") navigate("/buyer");
+      else navigate("/admin");
+
+    } catch (error) {
+      console.log("Firebase Error:", error.code, error.message);
+      toast({ title: "Authentication Error", description: error.message });
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+
+      // Store info locally
+      localStorage.setItem("userName", user.displayName || "User");
+      localStorage.setItem("userEmail", user.email);
+      localStorage.setItem("userRole", selectedRole);
+
+      toast({ title: "Google Login Successful!", description: `Welcome ${user.displayName || "User"}` });
+
+      if (selectedRole === "farmer") navigate("/farmer");
+      else if (selectedRole === "buyer") navigate("/buyer");
+      else navigate("/admin");
+
+    } catch (error) {
+      console.log("Firebase Google SignIn Error:", error.code, error.message);
+      toast({ title: "Google SignIn Error", description: error.message });
+    }
   };
 
   const roles = [
@@ -48,7 +115,7 @@ const Auth = () => {
             <Leaf className="h-8 w-8 text-primary" />
             <span className="text-2xl font-bold">KrishiBridge</span>
           </Link>
-          <h1 className="text-3xl font-bold mb-2">Welcome Back</h1>
+          <h1 className="text-3xl font-bold mb-2">{isLogin ? "Welcome Back" : "Join KrishiBridge"}</h1>
           <p className="text-muted-foreground">Choose your role and continue</p>
         </div>
 
@@ -57,15 +124,10 @@ const Auth = () => {
           {roles.map((role) => {
             const Icon = role.icon;
             const isSelected = selectedRole === role.id;
-
             return (
               <Card
                 key={role.id}
-                className={`cursor-pointer transition-all ${
-                  isSelected
-                    ? "border-2 border-primary shadow-[var(--shadow-hover)] scale-105"
-                    : "hover:bg-primary/5 hover:shadow-[var(--shadow-card)]"
-                }`}
+                className={`cursor-pointer transition-all ${isSelected ? "border-2 border-primary shadow-lg scale-105" : "hover:bg-primary/5 hover:shadow-md"}`}
                 onClick={() => setSelectedRole(role.id)}
               >
                 <CardHeader className="text-center">
@@ -87,13 +149,10 @@ const Auth = () => {
         <Card className="max-w-md mx-auto">
           <CardHeader>
             <CardTitle>
-              {isLogin ? "Login" : "Create Account"} as{" "}
-              {selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}
+              {isLogin ? "Login" : "Create Account"} as {selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}
             </CardTitle>
             <CardDescription>
-              {isLogin
-                ? "Enter your credentials to continue"
-                : "Fill in your details to get started"}
+              {isLogin ? "Enter your credentials to continue" : "Fill in your details to get started"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -101,34 +160,33 @@ const Auth = () => {
               {!isLogin && (
                 <div className="space-y-2">
                   <Label htmlFor="name">Full Name / পূর্ণ নাম</Label>
-                  <Input id="name" placeholder="Enter your name" required />
+                  <Input id="name" name="name" placeholder="Enter your name" required />
                 </div>
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email / Phone / ইমেইল / ফোন</Label>
-                <Input
-                  id="email"
-                  type="text"
-                  placeholder="name@example.com or 01XXXXXXXXX"
-                  required
-                />
+                <Label htmlFor="email">Email / ইমেইল</Label>
+                <Input id="email" name="email" type="text" placeholder="name@example.com" required />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="password">Password / পাসওয়ার্ড</Label>
-                <Input id="password" type="password" placeholder="Enter password" required />
+                <Input id="password" name="password" type="password" placeholder="Enter password" required />
               </div>
 
               {!isLogin && selectedRole === "farmer" && (
                 <div className="space-y-2">
                   <Label htmlFor="nid">NID Number / জাতীয় পরিচয়পত্র নম্বর</Label>
-                  <Input id="nid" placeholder="Enter your NID" />
+                  <Input id="nid" name="nid" placeholder="Enter your NID" />
                 </div>
               )}
 
               <Button type="submit" className="w-full" variant="hero">
                 {isLogin ? "Login / লগইন" : "Create Account / অ্যাকাউন্ট তৈরি করুন"}
+              </Button>
+
+              <Button type="button" onClick={handleGoogleSignIn} className="w-full mt-2" variant="outline">
+                Continue with Google
               </Button>
 
               <div className="text-center text-sm">
@@ -137,9 +195,7 @@ const Auth = () => {
                   onClick={() => setIsLogin(!isLogin)}
                   className="text-primary hover:underline"
                 >
-                  {isLogin
-                    ? "Don't have an account? Sign up"
-                    : "Already have an account? Login"}
+                  {isLogin ? "Don't have an account? Sign up" : "Already have an account? Login"}
                 </button>
               </div>
             </form>
