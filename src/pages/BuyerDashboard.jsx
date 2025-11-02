@@ -17,6 +17,11 @@ const BuyerDashboard = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
 
+  
+  
+    const name = localStorage.getItem("userName") || "Buyer";
+    const role = localStorage.getItem("userRole") || "Buyer";
+
 
   const handleAddToCart = (productId) => {
     setCart([...cart, productId]);
@@ -156,7 +161,7 @@ const BuyerDashboard = () => {
       <div className="container py-8">
         {/* Welcome */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">স্বাগতম, Shahed Alam</h1>
+          <h1 className="text-3xl font-bold mb-2">Welcome,{name}</h1>
           <p className="text-muted-foreground">
             Browse fresh produce from Kumira's local farmers
           </p>
