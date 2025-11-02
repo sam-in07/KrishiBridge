@@ -14,6 +14,12 @@ import { calculateDistance } from "@/lib/freshness";
 import { Badge } from "@/components/ui/badge";
 
 const FarmerDashboard = () => {
+
+ 
+    const name = localStorage.getItem("userName") || "Farmer";
+    const role = localStorage.getItem("userRole") || "farmer";
+
+
   const [showAddProduct, setShowAddProduct] = useState(false);
   const { toast } = useToast();
 
@@ -72,7 +78,7 @@ const FarmerDashboard = () => {
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold mb-2">স্বাগতম, Abdul Karim</h1>
+              <h1 className="text-3xl font-bold mb-2">Welcomem,{name}</h1>
               <p className="text-muted-foreground">Manage your products and track your sales</p>
             </div>
             <div className="flex flex-col gap-2">

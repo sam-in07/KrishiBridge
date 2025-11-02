@@ -16,6 +16,13 @@ const Auth = () => {
   const handleAuth = (e) => {
     e.preventDefault();
 
+  const name = !isLogin ? e.target.name.value : "User";
+  const email = e.target.email.value;
+
+  localStorage.setItem("userName", name);
+  localStorage.setItem("userEmail", email);
+  localStorage.setItem("userRole", selectedRole);
+
     toast({
       title: isLogin ? "Login Successful!" : "Account Created!",
       description: `Welcome to KrishiBridge ${selectedRole} portal`,
