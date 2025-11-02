@@ -1,5 +1,5 @@
 // src/pages/Auth.jsx
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,37 +8,30 @@ import { Leaf, UserCircle, ShoppingBasket, Shield } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
-import { auth, googleProvider } from "../Firebase/firebase.config";
+import { auth, googleProvider, db } from "../Firebase/firebase.config";
 import {
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  signOut,
 } from "firebase/auth";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 
 const Auth = () => {
   const [selectedRole, setSelectedRole] = useState("farmer");
   const [isLogin, setIsLogin] = useState(true);
-  const [currentUser, setCurrentUser] = useState(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const validateEmail = (email) => /\S+@\S+\.\S+/.test(email);
-
-  // Track auth state changes
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) setCurrentUser(user);
-      else setCurrentUser(null);
-    });
-    return () => unsubscribe();
-  }, []);
 
   const handleAuth = async (e) => {
     e.preventDefault();
     const name = !isLogin ? e.target.name.value.trim() : "";
     const email = e.target.email.value.trim();
     const password = e.target.password.value;
+    const nid = !isLogin && selectedRole === "farmer" ? e.target.nid.value.trim() : "";
 
     if (!validateEmail(email)) {
       return toast({ title: "Invalid Email", description: "Please enter a valid email address" });
@@ -51,27 +44,67 @@ const Auth = () => {
       let userCredential;
 
       if (isLogin) {
-        // Login
+        // LOGIN
         userCredential = await signInWithEmailAndPassword(auth, email, password);
+
+        // Fetch role from Firestore
+        const docRef = doc(db, "users", userCredential.user.uid);
+        const docSnap = await getDoc(docRef);
+
+        if (!docSnap.exists()) {
+          toast({ title: "Error", description: "User data not found. Please contact support." });
+          await signOut(auth);
+          return;
+        }
+
+        const userRole = docSnap.data().role;
+
+        if (userRole !== selectedRole) {
+          toast({
+            title: "Role Mismatch",
+            description: `This account is registered as "${userRole}". Please select the correct role.`,
+          });
+          await signOut(auth);
+          return;
+        }
+
+        // Store info locally
+        localStorage.setItem("userName", userCredential.user.displayName || "User");
+        localStorage.setItem("userEmail", userCredential.user.email);
+        localStorage.setItem("userRole", userRole);
+
         toast({ title: "Login Successful!", description: `Welcome back, ${userCredential.user.displayName || "User"}` });
+
+        // Navigate based on role
+        if (userRole === "farmer") navigate("/farmer");
+        else if (userRole === "buyer") navigate("/buyer");
+        else navigate("/admin");
+
       } else {
-        // Sign up
+        // SIGNUP
         userCredential = await createUserWithEmailAndPassword(auth, email, password);
+
         // Update display name
         await updateProfile(userCredential.user, { displayName: name });
-        toast({ title: "Account Created!", description: `Welcome to KrishiBridge ${selectedRole} portal` });
+
+        // Save role, NID, and user info in Firestore
+        await setDoc(doc(db, "users", userCredential.user.uid), {
+          name: name,
+          email: email,
+          role: selectedRole,
+          nid: nid || "",
+        });
+
+        // Logout after signup
+        await signOut(auth);
+
+        toast({
+          title: "Account Created!",
+          description: "Your account has been created successfully. Please log in now.",
+        });
+
+        setIsLogin(true); // Switch to login page
       }
-
-      // Store info locally
-      localStorage.setItem("userName", userCredential.user.displayName || name || "User");
-      localStorage.setItem("userEmail", userCredential.user.email);
-      localStorage.setItem("userRole", selectedRole);
-
-      // Navigate based on role
-      if (selectedRole === "farmer") navigate("/farmer");
-      else if (selectedRole === "buyer") navigate("/buyer");
-      else navigate("/admin");
-
     } catch (error) {
       console.log("Firebase Error:", error.code, error.message);
       toast({ title: "Authentication Error", description: error.message });
@@ -83,17 +116,37 @@ const Auth = () => {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
 
+      // Fetch role from Firestore
+      const docRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (!docSnap.exists()) {
+        toast({ title: "Error", description: "Google account not registered. Please sign up first." });
+        await signOut(auth);
+        return;
+      }
+
+      const userRole = docSnap.data().role;
+
+      if (userRole !== selectedRole) {
+        toast({
+          title: "Role Mismatch",
+          description: `This account is registered as "${userRole}". Please select the correct role.`,
+        });
+        await signOut(auth);
+        return;
+      }
+
       // Store info locally
       localStorage.setItem("userName", user.displayName || "User");
       localStorage.setItem("userEmail", user.email);
-      localStorage.setItem("userRole", selectedRole);
+      localStorage.setItem("userRole", userRole);
 
       toast({ title: "Google Login Successful!", description: `Welcome ${user.displayName || "User"}` });
 
-      if (selectedRole === "farmer") navigate("/farmer");
-      else if (selectedRole === "buyer") navigate("/buyer");
+      if (userRole === "farmer") navigate("/farmer");
+      else if (userRole === "buyer") navigate("/buyer");
       else navigate("/admin");
-
     } catch (error) {
       console.log("Firebase Google SignIn Error:", error.code, error.message);
       toast({ title: "Google SignIn Error", description: error.message });
